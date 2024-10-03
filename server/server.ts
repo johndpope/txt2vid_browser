@@ -1,19 +1,21 @@
-
 import WebSocket from 'ws';
 import { key, createNonce } from './util/crypto';
 import 'dotenv/config';
 import { parseTTSID } from './util/tts-id';
 import { request } from './util/resemble';
 import express, { Request, Response, Application } from 'express';
-
-
 import expressWS from 'express-ws';
 
-const { app }: { app: Application } = expressWS(express(), undefined, {
+type ApplicationWithWS = Application & {
+  ws: (path: string, callback: (ws: WebSocket, req: express.Request) => void) => void;
+};
+
+const { app } = expressWS(express(), undefined, {
   wsOptions: {
     perMessageDeflate: false
   }
-});
+}) as { app: ApplicationWithWS };
+
 
 type WebSocketWithIP = WebSocket & {
   ip: string;
@@ -78,13 +80,14 @@ app.post('/tts_callback', (req: Request, res: Response) => {
   res.status(200).end();
 });
 
-app.ws('/room/:id', (_ws, req) => {
-  const ws = Object.assign(_ws, { ip: req.ip! }) as unknown as WebSocketWithIP;
+app.ws('/room/:id', (ws: WebSocket, req: express.Request) => {
+  const wsWithIP = Object.assign(ws, { ip: req.ip! }) as WebSocketWithIP;
   const { id } = req.params;
   const { pw, un } = req.query as Record<string, string | undefined>;
   let room = rooms[id];
   let uid = un;
   let autoError = '';
+
   const send = (dat: string) => ws.readyState == WebSocket.OPEN && ws.send(dat);
   const broadcast = (dat: string) => {
     for (const conn in room.conns) {
@@ -121,7 +124,7 @@ app.ws('/room/:id', (_ws, req) => {
     type: 'welcome',
     msg: [uid].concat(Object.keys(room.conns))
   }));
-  room.conns[uid!] = ws;
+  // room.conns[uid!] = ws;
   broadcast(json({
     type: 'connect',
     msg: uid
