@@ -14,6 +14,20 @@ You should now have the `master` branch checked out in your local git repo, alon
 pip3 install torch --extra-index-url https://download.pytorch.org/whl/cpu
 ```
 
+
+
+## setup Ngrok https://ngrok.com/
+.env
+```shell
+NGROK_AUTHTOKEN=auth_token_here  
+```
+
+
+## generate server keys
+```shell
+node generate_keys.js
+```
+
 Then download one of the pretrained model files from the Wav2Lip repo. I have included their links here:
 
 Available models

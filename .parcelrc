@@ -5,5 +5,8 @@
   ],
   "compressors": {
     "*.{html,css,js,wasm,pico,ttf}": ["...", "@parcel/compressor-gzip", "@parcel/compressor-brotli"]
+  },
+  "transformers": {
+    "*.wasm": ["@parcel/transformer-raw"]
   }
 }
