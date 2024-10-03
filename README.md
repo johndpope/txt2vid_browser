@@ -44,6 +44,7 @@ After you download the `.pth` file, place it into the same directory as this REA
 ```sh
 # Change this to just wav2lip if you aren't using the GAN model
 python3 onnxconv.py wav2lip_gan
+
 ```
 
 You may see a warning if numpy is not installed but you should eventually get a `wav2lip_gan.onnx` or `wav2lip.onnx` file. This is the ONNX file containing the converted PyTorch model. You can move this file to `src/assets`.

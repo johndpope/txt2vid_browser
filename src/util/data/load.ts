@@ -1,4 +1,7 @@
 import { EventEmitter } from '../sub';
+import { fileURLToPath } from 'url';
+import { promises as fs } from 'fs';
+import path from 'path';
 
 interface LoaderEvents {
   progress: {
@@ -9,24 +12,50 @@ interface LoaderEvents {
 
 export class DataLoader extends EventEmitter<LoaderEvents> implements PromiseLike<ArrayBuffer> {
   private req: Promise<ArrayBuffer>;
+
   constructor(src: string | URL, cache?: string) {
     super();
     this.req = this.load(src, cache);
   }
-  private async load(src: string | URL, cache?: string) {
-    if (!cache) return this.longLoad(src);
-    const cacheSrc = await caches.open(cache);
-    let res = await cacheSrc.match(src);
-    if (res) return this.buffer(res);
-    await Promise.all((await cacheSrc.keys()).map(k => cacheSrc.delete(k)));
-    const result = await this.longLoad(src);
-    await cacheSrc.put(src, new Response(result, {
-      headers: {
-        'Content-Length': result.byteLength.toString()
+
+  private async load(src: string | URL, cache?: string): Promise<ArrayBuffer> {
+    try {
+      // If src is a URL, convert it to a file path
+      const filePath = src instanceof URL ? fileURLToPath(src) : src;
+
+      // Check if the path exists and is a file
+      try {
+        const stats = await fs.stat(filePath);
+        if (!stats.isFile()) {
+          throw new Error(`EISDIR: illegal operation on a directory, read '${filePath}'`);
+        }
+      } catch (error: any) {
+        if (error.code === 'ENOENT') {
+          console.error(`File not found: ${filePath}`);
+        }
+        throw error;
       }
-    }));
-    return result;
-  }
+
+      // If we're here, the file exists and is not a directory
+      if (!cache) return this.longLoad(filePath);
+
+      const cacheSrc = await caches.open(cache);
+      let res = await cacheSrc.match(filePath);
+      if (res) return this.buffer(res);
+
+      await Promise.all((await cacheSrc.keys()).map(k => cacheSrc.delete(k)));
+      const result = await this.longLoad(filePath);
+      await cacheSrc.put(filePath, new Response(result, {
+        headers: {
+          'Content-Length': result.byteLength.toString()
+        }
+      }));
+      return result;
+    } catch (error: any) {
+      console.error('Error in DataLoader:', error);
+      throw error;
+    }
+  } 
   private async longLoad(src: string | URL) {
     return fetch(src).then(async res => {
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);

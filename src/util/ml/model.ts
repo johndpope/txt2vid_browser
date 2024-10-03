@@ -41,9 +41,18 @@ env.wasm.proxy = true;
 declare let OffscreenCanvas: {
   new (width: number, height: number): HTMLCanvasElement;
 };
-
-export const loading = new DataLoader(modelURL.pathname, 'wav2lip');
-
+export const loading = new DataLoader(modelURL.pathname, 'wav2lip_gan');
+// Add error handling to the loading process
+loading.then((buffer) => {
+  console.log('Model loaded successfully');
+  // Process the loaded buffer here
+}).catch((error) => {
+  if (error.code === 'EISDIR') {
+    console.error('Error: Attempted to read a directory instead of a file. Please check the model path:', modelURL.pathname);
+  } else {
+    console.error('An error occurred while loading the model:', error);
+  }
+});
 type Executor = {
   warmUp: number;
   busy(): boolean;
