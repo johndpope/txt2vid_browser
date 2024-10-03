@@ -1,7 +1,7 @@
 // This file has many comments to clarify how the ONNX model is actually run.
 // This import creates a modelURL variable that contains a URL pointing to the converted ONNX model file
 const modelURL = new URL('../../assets/wav2lip.onnx', import.meta.url);
-
+import { env, InferenceSession, Tensor } from "onnxruntime-web";
 // These imports create variables that reference URLs to the WebAssembly runtimes necessary to efficiently
 // run the model. WebAssembly is an instruction set like x86 or ARM, but with instructions that can be
 // implemented on a wide variety of actual host devices (i.e. there are no native WebAssembly CPUs, but
@@ -26,15 +26,18 @@ import simdThreadWASM from 'url:onnxruntime-web/dist/ort-wasm-simd-threaded.wasm
 
 // This imports the classes necessary to prepare our inputs and run our model from onnxruntime-web,
 // the official CPU-only ONNX-standardized neural network runner.
-import { InferenceSession, Tensor, env } from 'onnxruntime-web';
+
 import { DataLoader } from '../data';
 
 // This just tells ONNX where to find the WebAssembly binaries needed to run the model
 env.wasm.wasmPaths = {
-  'ort-wasm.wasm': baseWASM,
-  'ort-wasm-simd.wasm': simdWASM,
-  'ort-wasm-threaded.wasm': threadWASM,
-  'ort-wasm-simd-threaded.wasm': simdThreadWASM
+  "ort-wasm-simd-threaded.wasm":
+    "https://kevmo314.github.io/magic-copy/ort-wasm-simd-threaded.wasm",
+  "ort-wasm-simd.wasm":
+    "https://kevmo314.github.io/magic-copy/ort-wasm-simd.wasm",
+  "ort-wasm-threaded.wasm":
+    "https://kevmo314.github.io/magic-copy/ort-wasm-threaded.wasm",
+  "ort-wasm.wasm": "https://kevmo314.github.io/magic-copy/ort-wasm.wasm",
 };
 env.wasm.proxy = true;
 
