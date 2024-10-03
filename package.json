@@ -6,9 +6,9 @@
   "author": "Arjun Barrett",
   "license": "MIT",
   "scripts": {
-    "copy-wasm": "cp node_modules/onnxruntime-web/dist/*.wasm public/",
-    "start": "rm -rf .parcel-cache && tsnd -T -P tsconfig.server.json --exit-child server/dev.ts",
-    "build": "rm -rf .parcel-cache && parcel build --no-scope-hoist --no-source-maps src/index.html && tsc --project tsconfig.server.json && cp package.server.json server-dist/package.json"
+
+    "start": "DEBUG=* rm -rf .parcel-cache && tsnd --inspect -T -P tsconfig.server.json --exit-child server/dev.ts ",
+    "build": "rm -rf .parcel-cache &&  parcel build --no-scope-hoist --no-source-maps src/index.html && tsc --project tsconfig.server.json && cp package.server.json server-dist/package.json"
   },
   "devDependencies": {
     "@ngrok/ngrok": "^0.9.1",
@@ -60,6 +60,7 @@
     "express-ws": "^5.0.2",
     "fflate": "^0.7.4",
     "node-fetch": "^2.7.0",
+    "ponyfill": "link:@material/dom/ponyfill",
     "react": "^16.14.0",
     "react-dom": "^16.14.0",
     "react-router-dom": "^6.26.2",

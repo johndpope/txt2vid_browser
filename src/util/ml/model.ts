@@ -1,7 +1,7 @@
 // This file has many comments to clarify how the ONNX model is actually run.
 // This import creates a modelURL variable that contains a URL pointing to the converted ONNX model file
 const modelURL = new URL('../../assets/wav2lip.onnx', import.meta.url);
-import { env, InferenceSession, Tensor } from "onnxruntime-web";
+
 // These imports create variables that reference URLs to the WebAssembly runtimes necessary to efficiently
 // run the model. WebAssembly is an instruction set like x86 or ARM, but with instructions that can be
 // implemented on a wide variety of actual host devices (i.e. there are no native WebAssembly CPUs, but
@@ -19,25 +19,18 @@ import { env, InferenceSession, Tensor } from "onnxruntime-web";
 //
 // onnxruntime-web: https://github.com/microsoft/onnxruntime/tree/master/js/web
 // wonnx: https://github.com/webonnx/wonnx
-import baseWASM from 'url:onnxruntime-web/dist/ort-wasm.wasm';
-import simdWASM from 'url:onnxruntime-web/dist/ort-wasm-simd.wasm';
-import threadWASM from 'url:onnxruntime-web/dist/ort-wasm-threaded.wasm';
-import simdThreadWASM from 'url:onnxruntime-web/dist/ort-wasm-simd-threaded.wasm';
-
 // This imports the classes necessary to prepare our inputs and run our model from onnxruntime-web,
 // the official CPU-only ONNX-standardized neural network runner.
-
+import { InferenceSession, Tensor, env } from 'onnxruntime-web';
 import { DataLoader } from '../data';
 
-// This just tells ONNX where to find the WebAssembly binaries needed to run the model
+
+// Set up the WASM paths
 env.wasm.wasmPaths = {
-  "ort-wasm-simd-threaded.wasm":
-    "https://kevmo314.github.io/magic-copy/ort-wasm-simd-threaded.wasm",
-  "ort-wasm-simd.wasm":
-    "https://kevmo314.github.io/magic-copy/ort-wasm-simd.wasm",
-  "ort-wasm-threaded.wasm":
-    "https://kevmo314.github.io/magic-copy/ort-wasm-threaded.wasm",
-  "ort-wasm.wasm": "https://kevmo314.github.io/magic-copy/ort-wasm.wasm",
+  'ort-wasm.wasm': '/onnxruntime-web/dist/ort-wasm.wasm',
+  'ort-wasm-simd.wasm': '/onnxruntime-web/dist/ort-wasm-simd.wasm',
+  'ort-wasm-threaded.wasm': '/onnxruntime-web/dist/ort-wasm-threaded.wasm',
+  'ort-wasm-simd-threaded.wasm': '/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm'
 };
 env.wasm.proxy = true;
 
@@ -45,17 +38,7 @@ declare let OffscreenCanvas: {
   new (width: number, height: number): HTMLCanvasElement;
 };
 export const loading = new DataLoader(modelURL.pathname, 'wav2lip_gan');
-// Add error handling to the loading process
-loading.then((buffer) => {
-  console.log('Model loaded successfully');
-  // Process the loaded buffer here
-}).catch((error) => {
-  if (error.code === 'EISDIR') {
-    console.error('Error: Attempted to read a directory instead of a file. Please check the model path:', modelURL.pathname);
-  } else {
-    console.error('An error occurred while loading the model:', error);
-  }
-});
+
 type Executor = {
   warmUp: number;
   busy(): boolean;
@@ -128,12 +111,40 @@ const makeThreadedExecutor = (type: 'webgl' | 'wasm', numWorkers: number): Execu
 };
 
 const makeLocalExecutor = (type: 'webgl' | 'wasm'): Executor => {
-  const modelProm = loading.then(buf => InferenceSession.create(buf, {
-    executionProviders: [type],
-    graphOptimizationLevel: 'all'
-  }));
+  const modelProm = loading.then(async (buf) => {
+    const sessionOptions = {
+      executionProviders: [type],
+      graphOptimizationLevel: 'all',
+      extraOptions: {
+        // We'll populate this in the initialization
+      }
+    };
+
+    const session = await InferenceSession.create(buf, sessionOptions);
+
+    // Query and log model metadata
+    console.log('🌻 Model input names:', session.inputNames);
+    const inputShapes: Record<string, string> = {};
+    for (const name of session.inputNames) {
+      const info = session.inputInfo[name];
+      console.log(`Input ${name} expected shape:`, info.shape);
+      // Convert shape to string representation for symbolic dimensions
+      inputShapes[name] = `[${info.shape.map(dim => dim === undefined ? 'batch' : dim).join(',')}]`;
+    }
+
+    // Recreate session with symbolic dimensions if needed
+    if (Object.values(inputShapes).some(shape => shape.includes('batch'))) {
+      console.log('Recreating session with symbolic dimensions');
+      sessionOptions.extraOptions = { inputShapes };
+      return await InferenceSession.create(buf, sessionOptions);
+    }
+
+    return session;
+  });
+
   let lastExec = Promise.resolve({} as Record<string, Tensor>);
   let busy = false;
+
   return {
     warmUp: 1,
     busy() {
@@ -143,14 +154,29 @@ const makeLocalExecutor = (type: 'webgl' | 'wasm'): Executor => {
       return lastExec = lastExec.then(async () => {
         busy = true;
         const model = await modelProm;
-        const outputs = await model.run(input);
-        busy = false;
-        return outputs;
+
+        console.log('Executing model with inputs:');
+        for (const [key, tensor] of Object.entries(input)) {
+          console.log(`  ${key}: shape ${tensor.dims}, type ${tensor.type}`);
+        }
+
+        try {
+          const outputs = await model.run(input);
+          console.log('Model execution successful. Output shapes:');
+          for (const [key, tensor] of Object.entries(outputs)) {
+            console.log(`  ${key}: shape ${tensor.dims}, type ${tensor.type}`);
+          }
+          busy = false;
+          return outputs;
+        } catch (error) {
+          console.error('Error during model execution:', error);
+          busy = false;
+          throw error;
+        }
       });
     }
   };
-}
-
+};
 const makeMultiExecutor = (executors: (Executor | undefined)[]): Executor => {
   const sources = executors.filter(e => e) as Executor[];
   const warmUps: Executor[] = [];
@@ -276,6 +302,7 @@ const toMelScale = (spectrum: Float32Array) => {
 
 // Wrapper for toMelScale that converts an entire spectrogram
 const toInputMelSpectrogram = (spectrogram: Float32Array[]) => {
+  console.log('toInputMelSpectrogram called. Input shape:', [spectrogram.length, spectrogram[0].length]);
   const melData = new Float32Array(N_MELS * SPECTROGRAM_FRAMES);
   for (let i = 0; i < SPECTROGRAM_FRAMES; ++i) {
     const melScaleSpectrum = toMelScale(spectrogram[i]);
@@ -283,9 +310,10 @@ const toInputMelSpectrogram = (spectrogram: Float32Array[]) => {
       melData[j * SPECTROGRAM_FRAMES + i] = melScaleSpectrum[j];
     }
   }
-  return new Tensor(melData, [1, N_MELS, SPECTROGRAM_FRAMES]);
+  const tensor = new Tensor(melData, [1, N_MELS, SPECTROGRAM_FRAMES]);
+  console.log('Mel spectrogram created. Shape:', tensor.dims);
+  return tensor;
 };
-
 // Prepares the visual input (i.e. the video frame) for use in Wav2Lip. For some reason,
 // Wav2Lip uses BGR instead of RGB and also uses 6 color channels instead of three. The
 // first three channels represents the original image, and the second three represent the
@@ -299,6 +327,7 @@ const toInputMelSpectrogram = (spectrogram: Float32Array[]) => {
 // the channels for the upper half of the image, and prepends those channels to the
 // stripped image to create 6 96x96 grayscale images representing each color channel's intensity.
 const toInputFrame = (img: ImageData) => {
+  console.log('toInputFrame called. Input dimensions:', img.width, 'x', img.height);
   const imgData = new Float32Array(totalPx * 6);
   for (let y = 0; y < IMG_SIZE; ++y) {
     for (let x = 0; x < IMG_SIZE; ++x) {
@@ -314,6 +343,7 @@ const toInputFrame = (img: ImageData) => {
     }
   }
   return new Tensor(imgData, [6, IMG_SIZE, IMG_SIZE]);
+  console.log('Input frame tensor created. Shape:', tensor.dims);
 };
 
 const toOutputImgs = (result: Tensor, num: number) => {
@@ -342,37 +372,43 @@ const toOutputImgs = (result: Tensor, num: number) => {
 // the lack of hardware acceleration in the WASM executor means this is mostly useless for now.
 const batch = (tensors: Tensor[]) => {
   if (!tensors.length) throw new TypeError('cannot create an empty batch');
+  console.log('Batching tensors. Count:', tensors.length);
+
   const base = tensors[0];
-  if (tensors.length == 1) {
-    return base.reshape([1, ...base.dims]);
-  }
-  const length = tensors.reduce((l, v) => {
-    if (
-      v.type != base.type ||
-      v.dims.length != base.dims.length ||
-      v.dims.some((v, i) => base.dims[i] != v)
-    ) {
-      throw new TypeError(
-        `expected${base.type} tensor(${base.dims.join(', ')}), found ${
-          v.type
-        } tensor(${v.dims.join(', ')})`
-      );
-    }
-    return l + v.data.length;
-  }, 0);
-  if (base.type == 'string') {
-    return new Tensor(
-      tensors.flatMap((t) => t.data as string[]),
-      [tensors.length, ...base.dims]
-    );
-  }
-  const buf = new (base.data.constructor as Uint8ArrayConstructor)(length);
-  let offset = 0;
-  for (const tensor of tensors) {
-    buf.set(tensor.data as Uint8Array, offset);
-    offset += tensor.data.length;
-  }
-  return new Tensor(buf, [tensors.length, ...base.dims]);
+  return base;
+  // if (tensors.length == 1) {
+  //   return base.reshape([1, ...base.dims]);
+  // }
+  // const length = tensors.reduce((l, v) => {
+  //   if (
+  //     v.type != base.type ||
+  //     v.dims.length != base.dims.length ||
+  //     v.dims.some((v, i) => base.dims[i] != v)
+  //   ) {
+  //     throw new TypeError(
+  //       `expected${base.type} tensor(${base.dims.join(', ')}), found ${
+  //         v.type
+  //       } tensor(${v.dims.join(', ')})`
+  //     );
+  //   }
+  //   return l + v.data.length;
+  // }, 0);
+  // if (base.type == 'string') {
+  //   return new Tensor(
+  //     tensors.flatMap((t) => t.data as string[]),
+  //     [tensors.length, ...base.dims]
+  //   );
+  // }
+  // const buf = new (base.data.constructor as Uint8ArrayConstructor)(length);
+  // let offset = 0;
+  // for (const tensor of tensors) {
+  //   buf.set(tensor.data as Uint8Array, offset);
+  //   offset += tensor.data.length;
+  // }
+
+  // const batchedTensor = new Tensor(buf, [tensors.length, ...base.dims]);
+  // console.log('Batched tensor created. Shape:', batchedTensor.dims);
+  // return batchedTensor;
 };
 
 const makeSampleInput = () => ({
@@ -433,6 +469,8 @@ export type FrameInput = { spectrogram: Float32Array[]; img: ImageData };
 //
 // The expected output is a single video frame as an ImageData object that can be rendered to a canvas.
 export async function genFrames(input: FrameInput[]) {
+  console.log('genFrames called with input length:', input.length);
+
   if (
     input.some(
       ({ img, spectrogram }) =>
@@ -442,17 +480,43 @@ export async function genFrames(input: FrameInput[]) {
         img.height != IMG_SIZE
     )
   ) {
+    console.error('Input validation failed. Dimensions:', {
+      spectrogram: input[0].spectrogram.length,
+      spectrumLength: input[0].spectrogram[0].length,
+      imgWidth: input[0].img.width,
+      imgHeight: input[0].img.height
+    });
     throw new TypeError(
       `need ${SPECTROGRAM_FRAMES} spectra and a ${IMG_SIZE}x${IMG_SIZE} image per input to predict`
     );
   }
-  const melBatch = batch(
-    input.map(({ spectrogram }) => toInputMelSpectrogram(spectrogram))
-  );
-  const imgBatch = batch(input.map(({ img }) => toInputFrame(img)));
+
+  console.log('Input validation passed');
+  const melBatch = toInputMelSpectrogram(input[0].spectrogram);
+  const imgBatch = toInputFrame(input[0].img);
+  console.log('Mel batch shape:', melBatch.dims);
+  console.log('Image batch shape:', imgBatch.dims);
   const result = await executor.execute({
     mel: melBatch,
     vid: imgBatch
   });
-  return toOutputImgs(result.gen, input.length);
+  // const melBatch = batch(
+  //   input.map(({ spectrogram }) => toInputMelSpectrogram(spectrogram))
+  // );
+  // console.log('Mel batch created. Shape:', melBatch.dims);
+
+  // const imgBatch = batch(input.map(({ img }) => toInputFrame(img)));
+  // console.log('Image batch created. Shape:', imgBatch.dims);
+
+  // console.log('Executing model...');
+  // const result = await executor.execute({
+  //   mel: melBatch,
+  //   vid: imgBatch
+  // });
+  console.log('Model execution completed. Result keys:', Object.keys(result));
+
+  const outputImages = toOutputImgs(result.gen, input.length);
+  console.log('Output images created. Count:', outputImages.length);
+
+  return outputImages;
 }
