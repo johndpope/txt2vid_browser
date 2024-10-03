@@ -124,7 +124,8 @@ app.ws('/room/:id', (ws: WebSocket, req: express.Request) => {
     type: 'welcome',
     msg: [uid].concat(Object.keys(room.conns))
   }));
-  // room.conns[uid!] = ws;
+  room.conns[uid!] = wsWithIP;
+
   broadcast(json({
     type: 'connect',
     msg: uid
