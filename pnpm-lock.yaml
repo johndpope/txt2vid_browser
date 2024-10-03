@@ -72,6 +72,9 @@ importers:
       '@types/dom-speech-recognition':
         specifier: ^0.0.1
         version: 0.0.1
+      '@types/express':
+        specifier: ^5.0.0
+        version: 5.0.0
       '@types/express-ws':
         specifier: ^3.0.1
         version: 3.0.5
@@ -86,7 +89,7 @@ importers:
         version: 16.9.24
       http-proxy-middleware:
         specifier: ^2.0.6
-        version: 2.0.6
+        version: 2.0.6(@types/express@5.0.0)
       onnxruntime-web:
         specifier: ^1.19.2
         version: 1.19.2
@@ -4895,13 +4898,15 @@ snapshots:
       statuses: 2.0.1
       toidentifier: 1.0.1
 
-  http-proxy-middleware@2.0.6:
+  http-proxy-middleware@2.0.6(@types/express@5.0.0):
     dependencies:
       '@types/http-proxy': 1.17.15
       http-proxy: 1.18.1
       is-glob: 4.0.3
       is-plain-obj: 3.0.0
       micromatch: 4.0.8
+    optionalDependencies:
+      '@types/express': 5.0.0
     transitivePeerDependencies:
       - debug
 

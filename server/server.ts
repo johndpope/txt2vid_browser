@@ -1,12 +1,15 @@
-import express from 'express';
-import expressWS from 'express-ws';
+
 import WebSocket from 'ws';
 import { key, createNonce } from './util/crypto';
 import 'dotenv/config';
 import { parseTTSID } from './util/tts-id';
 import { request } from './util/resemble';
+import express, { Request, Response, Application } from 'express';
 
-const { app } = expressWS(express(), undefined, {
+
+import expressWS from 'express-ws';
+
+const { app }: { app: Application } = expressWS(express(), undefined, {
   wsOptions: {
     perMessageDeflate: false
   }
@@ -31,7 +34,8 @@ app.get('/pubkey', (req, res) => {
   key.then(buf => res.send(buf))
 });
 
-app.get('/tts', async (req, res) => {
+app.get('/tts', async (req: Request, res: Response) => {
+
   const { id, text } = req.query;
   if (typeof id != 'string' || typeof text != 'string') {
     return res.status(400).end();
@@ -63,8 +67,8 @@ app.get('/tts', async (req, res) => {
   }
   res.redirect(await cache[cacheID]!);
 });
+app.post('/tts_callback', (req: Request, res: Response) => {
 
-app.post('/tts_callback', (req, res) => {
   const { src } = req.query;
   if (typeof src != 'string' || typeof req.body.url != 'string' || !nonceCB[src]) {
     return res.status(403).end();

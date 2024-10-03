@@ -8,7 +8,7 @@
   "scripts": {
     "copy-wasm": "cp node_modules/onnxruntime-web/dist/*.wasm public/",
     "start": "tsnd -T -P tsconfig.server.json --exit-child server/dev.ts",
-    "build": "parcel build --no-scope-hoist --no-source-maps sFrc/index.html && tsc --project tsconfig.server.json && cp package.server.json server-dist/package.json",
+    "build": "parcel build --no-scope-hoist --no-source-maps src/index.html && tsc --project tsconfig.server.json && cp package.server.json server-dist/package.json",
     "postinstall": "patch-package"
   },
   "devDependencies": {
@@ -20,6 +20,7 @@
     "@parcel/packager-xml": "^2.6.2",
     "@parcel/transformer-raw": "^2.12.0",
     "@types/dom-speech-recognition": "^0.0.1",
+    "@types/express": "^5.0.0",
     "@types/express-ws": "^3.0.1",
     "@types/node": "^18.0.0",
     "@types/node-fetch": "^2.6.2",
